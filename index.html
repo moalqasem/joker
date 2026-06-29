@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whac-A-Clown: Webcam Hand Tracking Arcade</title>
+  <meta name="description" content="A premium webcam-based Whac-A-Mole style game. Track your hands in real time, smack clowns, and hit high scores!">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  
+  <!-- MediaPipe Hands & Camera Utils CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="game-container">
+    <!-- Main Game Canvas -->
+    <canvas id="gameCanvas" width="960" height="720"></canvas>
+
+    <!-- Hidden Video Element for MediaPipe Input -->
+    <video id="webcam" autoplay playsinline mirrored muted style="display: none;"></video>
+
+    <!-- UI Overlay Screens -->
+
+    <!-- 1. Start Screen -->
+    <div id="startScreen" class="overlay active">
+      <div class="glass-panel text-center">
+        <h1 class="game-title neon-text-magenta">WHAC-A-CLOWN</h1>
+        <p class="game-subtitle">Webcam Hand-Tracking Arcade Game</p>
+        
+        <div class="instructions-box">
+          <h3>HOW TO PLAY</h3>
+          <ul>
+            <li>🖐️ Allow webcam access. Stand back so your upper body/hands are visible.</li>
+            <li>🤡 Smack the clowns popping out of the holes with your hands.</li>
+            <li>⚡ Hit power-ups: <span class="highlight-cyan">Freeze (blue)</span> slows down time, <span class="highlight-yellow">Double Points (gold)</span> doubles scores.</li>
+            <li>💣 <strong>Avoid</strong> hitting the <span class="highlight-red">Bomb Clowns</span>—they damage your health!</li>
+            <li>📈 Clowns get faster and spawn more frequently as the timer runs down.</li>
+          </ul>
+        </div>
+
+        <div class="high-score-display">
+          <span>HIGH SCORE: </span><span id="startHighScore" class="neon-text-cyan">0</span>
+        </div>
+
+        <button id="btnStart" class="btn btn-primary neon-btn">INITIALIZE CAMERA</button>
+      </div>
+    </div>
+
+    <!-- 2. Calibration Screen -->
+    <div id="calibrationScreen" class="overlay">
+      <div class="glass-panel text-center">
+        <h2 class="neon-text-cyan">CAMERA CALIBRATION</h2>
+        <p id="calibrationStatus">Loading tracking models, please wait...</p>
+        
+        <div class="calibration-preview-container">
+          <div class="loading-spinner"></div>
+        </div>
+
+        <div class="calibration-tips">
+          <p>💡 Tip: Ensure your room is well-lit and step back 3-5 feet from your webcam until your hands appear as glowing cursors on the screen.</p>
+        </div>
+
+        <button id="btnPlay" class="btn btn-secondary neon-btn" disabled>WAITING FOR TRACKING...</button>
+      </div>
+    </div>
+
+    <!-- 3. HUD Overlay (Visible during play) -->
+    <div id="hudOverlay" class="hud-overlay">
+      <!-- Top Bar: Scores & Time -->
+      <div class="hud-top-bar">
+        <div class="hud-item score-container">
+          <span class="hud-label">SCORE</span>
+          <span id="hudScore" class="hud-value neon-text-magenta">0000</span>
+          <span id="multiplierBadge" class="multiplier-badge hide">X2</span>
+        </div>
+
+        <div class="hud-item timer-container">
+          <span class="hud-label">TIME REMAINING</span>
+          <div class="timer-wrapper">
+            <span id="hudTimer" class="hud-value neon-text-yellow">60</span>
+            <div class="timer-bar-bg">
+              <div id="timerBarFill" class="timer-bar-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hud-item high-score-container">
+          <span class="hud-label">HIGH SCORE</span>
+          <span id="hudHighScore" class="hud-value neon-text-cyan">0000</span>
+        </div>
+      </div>
+
+      <!-- Bottom Bar: Health and Active Power-ups -->
+      <div class="hud-bottom-bar">
+        <div class="hud-item health-container">
+          <span class="hud-label">HEALTH</span>
+          <div class="health-bar-container">
+            <div id="healthBarFill" class="health-bar-fill"></div>
+            <div class="health-markers"></div>
+          </div>
+          <span id="hudHealthText" class="hud-value">100%</span>
+        </div>
+
+        <div class="hud-item level-container">
+          <span class="hud-label">LEVEL</span>
+          <span id="hudLevel" class="hud-value neon-text-cyan">1</span>
+        </div>
+      </div>
+
+      <!-- Power Up Indicators -->
+      <div class="powerups-active-container">
+        <div id="freezeIndicator" class="powerup-indicator freeze hide">
+          <span class="indicator-icon">❄️</span>
+          <span class="indicator-text">FROZEN</span>
+          <span id="freezeTimer" class="indicator-time">3.0s</span>
+        </div>
+        <div id="doubleIndicator" class="powerup-indicator double hide">
+          <span class="indicator-icon">⚡</span>
+          <span class="indicator-text">2X POINTS</span>
+          <span id="doubleTimer" class="indicator-time">6.0s</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Game Over Screen -->
+    <div id="gameOverScreen" class="overlay">
+      <div class="glass-panel text-center">
+        <h1 class="neon-text-red game-title">GAME OVER</h1>
+        <p id="gameOverReason" class="game-subtitle">Out of health!</p>
+
+        <div class="stats-box">
+          <div class="stat-row">
+            <span>FINAL SCORE</span>
+            <span id="finalScore" class="stat-val neon-text-magenta">0</span>
+          </div>
+          <div class="stat-row">
+            <span>LEVEL REACHED</span>
+            <span id="finalLevel" class="stat-val neon-text-cyan">1</span>
+          </div>
+          <div class="stat-row">
+            <span>CLOWNS SMACKED</span>
+            <span id="finalClownsHit" class="stat-val neon-text-yellow">0</span>
+          </div>
+          <div class="stat-row">
+            <span>HIGH SCORE</span>
+            <span id="finalHighScore" class="stat-val neon-text-cyan">0</span>
+          </div>
+        </div>
+
+        <button id="btnRestart" class="btn btn-primary neon-btn">PLAY AGAIN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Script Modules -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
